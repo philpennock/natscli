@@ -75,11 +75,15 @@ type Config struct {
 }
 
 type Exporter struct {
-	ns     string
-	config Config
+	ns             string
+	connectTimeout time.Duration
+	config         Config
 }
 
-func NewExporter(ns string, f string) (*Exporter, error) {
+// NewExporter creates an exporter publishing the checks in the configuration
+// file f.  Each check connects using its own context, connectTimeout bounds
+// how long those connections may take to establish, 0 uses the nats.go default.
+func NewExporter(ns string, f string, connectTimeout time.Duration) (*Exporter, error) {
 	cf, err := os.ReadFile(f)
 	if err != nil {
 		return nil, err
@@ -90,7 +94,8 @@ func NewExporter(ns string, f string) (*Exporter, error) {
 	}
 
 	exporter := &Exporter{
-		ns: ns,
+		ns:             ns,
+		connectTimeout: connectTimeout,
 	}
 
 	err = yaml.Unmarshal(cf, &exporter.config)
@@ -120,7 +125,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			return
 		}
 
-		opts, err := nctx.NATSOptions()
+		opts, err := e.natsOptions(nctx)
 		if result.CriticalIfErrf(err, "could not load context: %v", err) {
 			return
 		}
@@ -165,6 +170,22 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 		callCheck(check, f)
 	}
+}
+
+// natsOptions builds the connection options for a check, the connect timeout
+// applies both to the connection a check reuses and to the ones the monitor
+// package establishes for itself.
+func (e *Exporter) natsOptions(nctx *natscontext.Context) ([]nats.Option, error) {
+	opts, err := nctx.NATSOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	if e.connectTimeout > 0 {
+		opts = append(opts, nats.Timeout(e.connectTimeout))
+	}
+
+	return opts, nil
 }
 
 func (e *Exporter) natsContext(check *Check) (*natscontext.Context, error) {

@@ -24,7 +24,7 @@ import (
 )
 
 func (c *SrvCheckCmd) exporterAction(_ *fisk.ParseContext) error {
-	exp, err := exporter.NewExporter(opts().PrometheusNamespace, c.exporterConfigFile)
+	exp, err := exporter.NewExporter(opts().PrometheusNamespace, c.exporterConfigFile, opts().ConnectTimeout)
 	if err != nil {
 		return err
 	}
